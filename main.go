@@ -74,6 +74,20 @@ func createDeployment(clientset *kubernetes.Clientset) {
 	prompt()
 }
 
+func deleteDeployment(name string, clientset *kubernetes.Clientset) {
+	deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)
+
+	fmt.Println("Deleting deployment...")
+	deletePolicy := metav1.DeletePropagationForeground
+	if err := deploymentsClient.Delete(context.TODO(), name, metav1.DeleteOptions{
+		PropagationPolicy: &deletePolicy,
+	}); err != nil {
+		panic(err)
+	}
+	fmt.Println("Deleted deployment.")
+	prompt()
+}
+
 func main() {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
@@ -97,6 +111,7 @@ func main() {
 	fmt.Println(pods)
 
 	createDeployment(clientset)
+	deleteDeployment("demo-deployment", clientset)
 }
 
 func int32Ptr(i int32) *int32 { return &i }
