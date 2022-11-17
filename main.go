@@ -75,13 +75,13 @@ func createDeployment(clientset *kubernetes.Clientset) {
 	prompt()
 }
 
-func updateDeployment(setReplicas int32, setContainer string, clientset *kubernetes.Clientset) {
+func updateDeployment(name string, setReplicas int32, setContainer string, clientset *kubernetes.Clientset) {
 	deploymentsClient := clientset.AppsV1().Deployments(apiv1.NamespaceDefault)
 
 	fmt.Println("Updating deployment...")
 
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		result, getErr := deploymentsClient.Get(context.TODO(), "demo-deployment", metav1.GetOptions{})
+		result, getErr := deploymentsClient.Get(context.TODO(), name, metav1.GetOptions{})
 		if getErr != nil {
 			panic(fmt.Errorf("failed to get latest version of Deployment: %v", getErr))
 		}
@@ -135,7 +135,7 @@ func main() {
 	fmt.Println(pods)
 
 	createDeployment(clientset)
-	updateDeployment(1, "nginx:1.13", clientset)
+	updateDeployment("demo-deployment", 1, "nginx:1.13", clientset)
 	deleteDeployment("demo-deployment", clientset)
 }
 
