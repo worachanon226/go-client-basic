@@ -95,7 +95,7 @@ func updateDeployment(clientset *kubernetes.Clientset) {
 		panic(fmt.Errorf("Update failed: %v", retryErr))
 	}
 	fmt.Println("Updated deployment...")
-
+	prompt()
 }
 
 func deleteDeployment(name string, clientset *kubernetes.Clientset) {
