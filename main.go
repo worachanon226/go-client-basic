@@ -3,13 +3,14 @@ package main
 import (
 	"bufio"
 	"context"
-	"fmt"
-	"os"
-
-	// "context"
 	"flag"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 
+	"gopkg.in/yaml.v3"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,6 +19,11 @@ import (
 	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 )
+
+type yamlfile struct {
+	Apiversion string `yaml:"apiVersion"`
+	Kind       string `yaml:"kind"`
+}
 
 func getpods(name string, clientset *kubernetes.Clientset) int {
 
@@ -112,6 +118,22 @@ func deleteDeployment(name string, clientset *kubernetes.Clientset) {
 	prompt()
 }
 
+func applyyaml() {
+	yamlFile, err := ioutil.ReadFile("deploy.yaml")
+	if err != nil {
+		log.Printf("yamlFile.Get err   #%v ", err)
+	}
+
+	data := make(map[interface{}]interface{})
+	err = yaml.Unmarshal([]byte(yamlFile), &data)
+	if err != nil {
+		log.Fatalf("Unmarshal: %v", err)
+	}
+	for k, v := range data {
+		fmt.Printf("%s: %s\n", k, v)
+	}
+}
+
 func main() {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
@@ -134,6 +156,7 @@ func main() {
 	pods := getpods("default", clientset)
 	fmt.Println(pods)
 
+	applyyaml()
 	createDeployment(clientset)
 	updateDeployment("demo-deployment", 1, "nginx:1.13", clientset)
 	deleteDeployment("demo-deployment", clientset)
