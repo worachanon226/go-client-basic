@@ -2,63 +2,29 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
-	"gopkg.in/yaml.v2"
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/restmapper"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
 	"k8s.io/client-go/util/retry"
 )
-
-type KubernetesStruct struct {
-	APIVersion string `yaml:"apiVersion"`
-	Kind       string `yaml:"kind"`
-
-	Metadata struct {
-		Name string `yaml:"name"`
-	} `yaml:"metadata"`
-
-	Spec struct {
-		Replicas int `yaml:"replicas"`
-
-		Selector struct {
-			MatchLabels struct {
-				app string `yaml:"app"`
-			} `yaml:"matchLabels"`
-		} `yaml:"selector"`
-
-		Template struct {
-			Metadata struct {
-				Labels struct {
-					app string `yaml:"app"`
-				} `yaml:"labels"`
-			} `yaml:"metadata"`
-		} `yaml:"template"`
-
-		Spec struct {
-			Containers struct {
-				Name  string `yaml:"name"`
-				Image string `yaml:"image"`
-
-				Resources struct {
-					Limits struct {
-						Memory string `yaml:"memory"`
-						Cpu    string `yaml:"cpu"`
-					} `yaml:"limits"`
-				} `yaml:"resources"`
-
-				Ports struct {
-					ContainerPort int `yaml:"containerPort"`
-				} `yaml:"ports"`
-			} `yaml:"containers"`
-		} `yaml:"spec"`
-	}
-}
 
 func getpods(name string, clientset *kubernetes.Clientset) int {
 
@@ -153,54 +119,71 @@ func deleteDeployment(name string, clientset *kubernetes.Clientset) {
 	prompt()
 }
 
-func applyyaml() {
-	file, err := ioutil.ReadFile("deploy.yaml")
-
+func applyyaml(filepath string, config *rest.Config) {
+	file, err := ioutil.ReadFile(filepath)
 	if err != nil {
 		panic(err)
 	}
 
-	var kubernetesStruct KubernetesStruct
-
-	err = yaml.Unmarshal(file, &kubernetesStruct)
+	c, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("%#v\n", kubernetesStruct.APIVersion)
-	fmt.Printf("%#v\n", kubernetesStruct.Kind)
-	fmt.Printf("%#v\n", kubernetesStruct.Metadata.Name)
-	fmt.Printf("%#v\n", kubernetesStruct.Spec.Replicas)
-	fmt.Printf("%#v\n", kubernetesStruct.Spec.Selector.MatchLabels.app)
-	fmt.Printf("%#v\n", kubernetesStruct.Spec.Template.Metadata.Labels.app)
+	dd, err := dynamic.NewForConfig(config)
+	if err != nil {
+		panic(err)
+	}
+
+	decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(file), 100)
+	for {
+		var rawObj runtime.RawExtension
+		if err = decoder.Decode(&rawObj); err != nil {
+			break
+		}
+
+		obj, gvk, err := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
+		unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+		if err != nil {
+			panic(err)
+		}
+
+		unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
+
+		gr, err := restmapper.GetAPIGroupResources(c.Discovery())
+		if err != nil {
+			panic(err)
+		}
+	}
+
 }
 
 func main() {
-	// var kubeconfig *string
-	// if home := homedir.HomeDir(); home != "" {
-	// 	kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	// } else {
-	// 	kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	// }
-	// flag.Parse()
+	var kubeconfig *string
+	if home := homedir.HomeDir(); home != "" {
+		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+	} else {
+		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	}
+	flag.Parse()
 
-	// config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
+	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	if err != nil {
+		panic(err.Error())
+	}
 
-	// clientset, err := kubernetes.NewForConfig(config)
-	// if err != nil {
-	// 	panic(err.Error())
-	// }
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
 
-	// pods := getpods("default", clientset)
-	// fmt.Println(pods)
+	pods := getpods("default", clientset)
+	fmt.Println(pods)
 
-	applyyaml()
-	// createDeployment(clientset)
-	// updateDeployment("demo-deployment", 1, "nginx:1.13", clientset)
-	// deleteDeployment("demo-deployment", clientset)
+	applyyaml("deploy.yaml", config)
+	createDeployment(clientset)
+	updateDeployment("demo-deployment", 1, "nginx:1.13", clientset)
+	deleteDeployment("demo-deployment", clientset)
 }
 
 func int32Ptr(i int32) *int32 { return &i }
