@@ -6,12 +6,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -154,8 +157,30 @@ func applyyaml(filepath string, config *rest.Config) {
 		if err != nil {
 			panic(err)
 		}
-	}
 
+		mapper := restmapper.NewDiscoveryRESTMapper(gr)
+		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		if err != nil {
+			panic(err)
+		}
+
+		var dri dynamic.ResourceInterface
+		if mapping.Scope.Name() == meta.RESTScopeNameNamespace {
+			if unstructuredObj.GetNamespace() == "" {
+				unstructuredObj.SetNamespace("default")
+			}
+			dri = dd.Resource(mapping.Resource).Namespace(unstructuredObj.GetNamespace())
+		} else {
+			dri = dd.Resource(mapping.Resource)
+		}
+
+		if _, err := dri.Create(context.Background(), unstructuredObj, metav1.CreateOptions{}); err != nil {
+			panic(err)
+		}
+	}
+	if err != io.EOF {
+		log.Fatal("eof ", err)
+	}
 }
 
 func main() {
